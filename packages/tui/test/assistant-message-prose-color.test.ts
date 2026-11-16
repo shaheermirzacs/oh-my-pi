@@ -7,6 +7,7 @@ import { AssistantMessageComponent } from "@oh-my-pi/pi-tui/chat/assistant-messa
 import { getThemeByName, initTheme, setMarkdownColorful, setThemeInstance } from "@oh-my-pi/pi-tui/theme";
 import { setTerminalImageProtocol, TERMINAL } from "@oh-my-pi/pi-tui";
 import { getConfigRootDir, getCustomThemesDir, removeWithRetries, setAgentDir } from "@oh-my-pi/pi-utils";
+import { extractCodeBlocks } from "@oh-my-pi/pi-tui/overlays/copy-targets";
 
 const RENDER_WIDTH = 80;
 const PROSE = "Assistant prose must be themeable.";
@@ -221,5 +222,97 @@ describe("assistant prose theme token", () => {
 		expect(rendered).toContain(`${green}Heading One`);
 		expect(rendered).toContain(`${green}link`);
 		expect(rendered).toContain(`${green}plain paragraph with`);
+	});
+
+	it("renders assistant code without displaying fence delimiters", () => {
+		const source = "1. Run:\n   ```bash\n   cat <<'EOF'\n   hello\n   EOF\n   ```\n2. Next item\n\n```bash\nbrew install example\n```";
+		const lines = new AssistantMessageComponent(assistantMessage(source))
+			.render(RENDER_WIDTH)
+			.map(line => Bun.stripANSI(line).trimEnd());
+
+		expect(lines.join("\n")).not.toContain("```");
+		expect(lines).toContain("cat <<'EOF'");
+		expect(lines).toContain("hello");
+		expect(lines).toContain("EOF");
+		expect(lines).toContain(" 2. Next item");
+		expect(lines).toContain("brew install example");
+		const leading = new AssistantMessageComponent(assistantMessage("1. ```sh\n   echo one\n   ```\n2. Next"))
+			.render(RENDER_WIDTH)
+			.map(line => Bun.stripANSI(line).trimEnd());
+		expect(leading.slice(0, 2)).toEqual([" 1.", "echo one"]);
+		expect(leading).toContain(" 2. Next");
+		expect(extractCodeBlocks(source)).toEqual([
+			{ lang: "bash", code: "cat <<'EOF'\nhello\nEOF" },
+			{ lang: "bash", code: "brew install example" },
+		]);
+	});
+
+	it("advances list-code scrollback before the closing fence arrives", () => {
+		const component = new AssistantMessageComponent();
+		let previousCount = 0;
+		for (const lineCount of [8, 24]) {
+			const code = Array.from({ length: lineCount }, (_, index) => `   const row${index} = ${index};`).join("\n");
+			const source = `First paragraph.\n\n1. Run:\n   \`\`\`ts\n${code}\n   const pending =`;
+			component.updateContent(assistantMessage(source), { transient: true });
+			const rendered = component.render(RENDER_WIDTH);
+			const count = component.getTranscriptStableRows().length;
+			expect(count).toBeGreaterThan(previousCount);
+			const stable = component.renderTranscriptStableRows(count, RENDER_WIDTH);
+			expect(stable).toEqual(rendered.slice(0, stable.length));
+			expect(Bun.stripANSI(stable.join("\n"))).toContain(`const row${lineCount - 2} = ${lineCount - 2};`);
+			previousCount = count;
+		}
+	});
+
+	it("keeps streaming code and stable replay identical through fence closure", () => {
+		for (const source of [
+			"First paragraph.\n\n```ts\nconst first = 1;\nconst last = 2;\n```\n\nDone.",
+			"First paragraph.\n\n1. Run:\n   ```ts\n   const first = 1;\n   const last = 2;\n   ```\n2. Next.\n\nDone.",
+		]) {
+			const component = new AssistantMessageComponent();
+			for (let end = 1; end <= source.length; end++) {
+				component.updateContent(assistantMessage(source.slice(0, end)), { transient: true });
+				component.render(RENDER_WIDTH);
+			}
+			component.updateContent(assistantMessage(source));
+			const rendered = component.render(RENDER_WIDTH);
+			expect(rendered).toEqual(new AssistantMessageComponent(assistantMessage(source)).render(RENDER_WIDTH));
+			expect(Bun.stripANSI(rendered.join("\n"))).toContain("const last = 2;");
+			expect(Bun.stripANSI(rendered.join("\n"))).not.toContain("```");
+			const count = component.getTranscriptStableRows().length;
+			expect(count).toBeGreaterThan(0);
+			const stable = component.renderTranscriptStableRows(count, RENDER_WIDTH);
+			expect(stable).toEqual(rendered.slice(0, stable.length));
+			expect(Bun.stripANSI(stable.join("\n"))).toContain("const last = 2;");
+		}
+	});
+
+	it("separates code from prose and adjacent blocks by exactly one blank row", () => {
+		const cases = [
+			"Before\n```sh\necho first\n```\nAfter",
+			"Before\n\n```sh\necho first\n```\n\nAfter",
+			"1. Before\n   ```sh\n   echo first\n   ```\n2. After",
+			"1. Before\n\n   ```sh\n   echo first\n   ```\n\n2. After",
+			"1. Before\n   ```sh\n   echo first\n   ```\n   After",
+			"1. Before\n   ```sh\n   echo first\n   ```\n\nAfter",
+			"1. Before\n```sh\necho first\n```\nAfter",
+			"1. Before\n   ```sh\n   echo first\n   ```\n   ```sh\n   echo second\n   ```\n2. After",
+		];
+		for (const source of cases) {
+			for (const width of [42, 80]) {
+				const lines = new AssistantMessageComponent(assistantMessage(source))
+					.render(width)
+					.map(line => Bun.stripANSI(line).trim());
+				const labels = source.includes("echo second")
+					? ["Before", "echo first", "echo second", "After"]
+					: ["Before", "echo first", "After"];
+				for (let index = 1; index < labels.length; index++) {
+					const before = lines.findIndex(line => line.includes(labels[index - 1]!));
+					const after = lines.findIndex(line => line.includes(labels[index]!));
+					expect(after - before).toBe(2);
+					expect(lines[before + 1]).toBe("");
+				}
+			}
+		}
 	});
 });

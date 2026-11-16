@@ -214,7 +214,7 @@ function hasUnchangedOwnFields(object: object, fields: ReadonlyArray<readonly [P
 	});
 }
 
-/** Only themes assembled here have stable callbacks and private link state. */
+/** Only host-assembled themes have stable callbacks and private link state. */
 export function canCacheMarkdownListItems(candidate: MarkdownTheme): boolean {
 	const registered = cacheableMarkdownThemes.get(candidate);
 	if (registered === undefined || registered.theme !== theme || candidate.symbols === undefined) return false;
@@ -227,7 +227,8 @@ export function canCacheMarkdownListItems(candidate: MarkdownTheme): boolean {
 	}
 }
 
-function registerCacheableMarkdownTheme(markdownTheme: MarkdownTheme): void {
+/** @internal Register a host-assembled theme whose callbacks are stable. */
+export function registerCacheableMarkdownTheme(markdownTheme: MarkdownTheme): void {
 	if (markdownTheme.symbols === undefined) return;
 	cacheableMarkdownThemes.set(markdownTheme, {
 		theme,

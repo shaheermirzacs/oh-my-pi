@@ -21,6 +21,7 @@ import chalk from "@oh-my-pi/pi-utils/chalk";
 import { LRUCache } from "@oh-my-pi/pi-utils/lru";
 import type { AssistantTextRenderer, AssistantTextRendering, AssistantThinkingRenderer } from "./extension-types";
 import { ensureThemeSync, getMarkdownTheme, getMarkdownThemeWithLinkTargets, getThemeEpoch, theme } from "../theme";
+import { canCacheMarkdownListItems, registerCacheableMarkdownTheme } from "../theme/tui-adapters";
 import { card, col, elapsed, node, span, text } from "../native/describe";
 import { hasTranscriptActions, runTranscriptAction, runTurnAction, turnHoldEntries } from "./transcript-actions";
 import type { DescribeContext, NativeChild, NativeNode, NativeUiEvent } from "../native/node";
@@ -459,7 +460,9 @@ export class AssistantMessageComponent extends Container {
 		if (this.#markdownTheme) return this.#markdownTheme;
 		const base = getMarkdownTheme();
 		const snapshot = this.#linkTargets;
-		const markdownTheme = snapshot.size > 0 ? getMarkdownThemeWithLinkTargets(snapshot) : base;
+		const linked = snapshot.size > 0 ? getMarkdownThemeWithLinkTargets(snapshot) : base;
+		const markdownTheme = { ...linked, codeBlockBorder: () => "" };
+		if (canCacheMarkdownListItems(linked)) registerCacheableMarkdownTheme(markdownTheme);
 		this.#markdownTheme = markdownTheme;
 		return markdownTheme;
 	}
@@ -1494,13 +1497,15 @@ export class AssistantMessageComponent extends Container {
 		if (renderer?.index === index && renderer.kind === kind) {
 			renderer.md.setText(trimmed);
 			renderer.md.openTableTail = openTable;
-			return trimFabricatedCloser(renderer.md.render(width), trimmed);
+			const rows = renderer.md.render(width);
+			return kind === "text" ? rows : trimFabricatedCloser(rows, trimmed);
 		}
 		const md = this.#createMarkdown(kind, trimmed, locks);
 		md.openTableTail = openTable;
 		if (role === "head") this.#stableHeadRenderer = { index, kind, md };
 		else if (role === "replay") this.#stableReplayRenderer = { index, kind, md };
-		return trimFabricatedCloser(md.render(width), trimmed);
+		const rows = md.render(width);
+		return kind === "text" ? rows : trimFabricatedCloser(rows, trimmed);
 	}
 
 	/** Markdown for a text or thinking block; live children and stable-row renders share it so stable rows prefix the block render. */

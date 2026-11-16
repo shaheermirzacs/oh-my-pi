@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- `Ctrl+O` now expands and collapses tool output already in terminal scrollback, without duplicating transcript history.
+- Assistant code blocks no longer display literal Markdown fence delimiters and are separated from surrounding text by one blank line.
+
 ## [18.20.2] - 2026-11-14
 
 ### Added

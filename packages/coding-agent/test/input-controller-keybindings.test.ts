@@ -170,6 +170,7 @@ async function createContext() {
 		editor: editor as unknown as InteractiveModeContext["editor"],
 		syncIdleMaintenanceView: vi.fn(),
 		resetDisplayAfterAppearanceRefresh,
+		redrawTranscriptBlocks: vi.fn(),
 		ui: {
 			requestRender,
 			resetDisplay,

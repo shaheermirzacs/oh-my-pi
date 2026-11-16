@@ -62,6 +62,8 @@ All tokens below are required in `colors` except `thinkingMax` (falls back to `t
 
 With the `tui.colorfulMarkdown` setting on (the default), headings, `**strong**`, `*emphasis*`, inline code and table headers take their colors from the theme's `terminal.ansi` palette instead of `mdHeading`/`mdCode` and plain bold/italic: H1 magenta, H2 yellow, H3–H6 blue, strong/emphasis magenta, inline code green, table headers yellow. All hues come from one palette so they stay distinct. Turning the setting off restores `mdHeading` for every level, `mdCode`, and uncolored bold/italic.
 
+Assistant replies show syntax-highlighted code without literal fence delimiters, with one blank line separating code from surrounding text. Raw-code copying still uses the original Markdown source; tool and thinking renderers keep their own fence styling.
+
 ### Tool diff + syntax highlighting (12)
 
 `toolDiffAdded`, `toolDiffRemoved`, `toolDiffContext`,

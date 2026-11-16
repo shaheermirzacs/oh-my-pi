@@ -3172,8 +3172,8 @@ export class InputController {
 				child.setExpanded(expanded);
 			}
 		}
-		// Toggling expansion mutates every live block; blocks already committed to
-		// terminal history stay at their committed presentation.
+		// Retired cards need a history replay; live/native cards only need a repaint.
+		this.ctx.redrawTranscriptBlocks(this.ctx.chatContainer.children, isExpandable);
 		this.ctx.ui.requestRender(true);
 	}
 

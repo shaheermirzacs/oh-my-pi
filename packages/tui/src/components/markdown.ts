@@ -1865,6 +1865,7 @@ export interface MarkdownTheme {
 	resolveLink?: (href: string) => string | undefined;
 	code: (text: string) => string;
 	codeBlock: (text: string) => string;
+	/** Style a fence delimiter; return an empty string to omit its row. */
 	codeBlockBorder: (text: string) => string;
 	quote: (text: string) => string;
 	quoteBorder: (text: string) => string;
@@ -4279,11 +4280,13 @@ export class Markdown implements Component {
 				}
 
 				const codeIndent = padding(this.#codeBlockIndent);
-				lines.push(renderedLine(this.#theme.codeBlockBorder(`\`\`\`${token.lang || ""}`)));
+				const opener = this.#theme.codeBlockBorder(`\`\`\`${token.lang || ""}`);
+				if (opener) lines.push(renderedLine(opener));
 				for (const bodyLine of this.#renderCodeBodyLines(token, codeIndent)) {
 					lines.push(bodyLine);
 				}
-				lines.push(renderedLine(this.#theme.codeBlockBorder("```")));
+				const closer = this.#theme.codeBlockBorder("```");
+				if (closer) lines.push(renderedLine(closer));
 				if (nextTokenType && nextTokenType !== "space") {
 					lines.push(renderedLine("")); // Add spacing after code blocks (unless space token follows)
 				}
@@ -4292,6 +4295,8 @@ export class Markdown implements Component {
 
 			case "list": {
 				const listLines = this.#renderList(token as ListToken, 0, width, styleContext);
+				if (nextTokenType === "space" && listLines.at(-1)?.text.trim() === "") listLines.pop();
+				if (nextTokenType === "code" && listLines.at(-1)?.text.trim() !== "") listLines.push(renderedLine(""));
 				lines.push(...listLines);
 				// Don't add spacing after lists if a space token follows
 				// (the space token will handle it)
@@ -4732,6 +4737,8 @@ export class Markdown implements Component {
 				if (firstLine.nested) {
 					lines.push(firstLine);
 				} else {
+					// Literal code ignores prefixes, so a leading code row needs its own marker row.
+					if (firstLine.literalCode) lines.push(renderedLine(firstPrefix));
 					pushWrapped(firstLine, firstPrefix, continuationIndent);
 				}
 
@@ -4823,11 +4830,17 @@ export class Markdown implements Component {
 			} else if (token.type === "code") {
 				// Code block in list item
 				const codeIndent = padding(this.#codeBlockIndent);
-				lines.push({ text: this.#theme.codeBlockBorder(`\`\`\`${token.lang || ""}`), nested: false });
+				const opener = this.#theme.codeBlockBorder(`\`\`\`${token.lang || ""}`);
+				if (opener) lines.push({ text: opener, nested: false });
+				else if (lines.length > 0 && lines.at(-1)?.text.trim() !== "") lines.push({ text: "", nested: false });
 				for (const bodyLine of this.#renderCodeBodyLines(token, codeIndent)) {
 					lines.push({ ...bodyLine, nested: false });
 				}
-				lines.push({ text: this.#theme.codeBlockBorder("```"), nested: false });
+				const closer = this.#theme.codeBlockBorder("```");
+				if (closer) lines.push({ text: closer, nested: false });
+				else if (!endsInsideOpenFence(token.raw)) {
+					lines.push({ text: "", nested: false });
+				}
 			} else if (token.type === "table") {
 				for (const row of this.#renderTable(token as TableToken, contentWidth, tokens[i + 1]?.type, styleContext)) {
 					lines.push({ text: row, nested: false });
